@@ -117,25 +117,23 @@ class CloseAllPositions extends Command
             // If using limit orders, get all LTPs at once
             $useLimitOrder = $this->option('use-limit-order');
             $ltpPrices = [];
-            
+
             if ($useLimitOrder) {
                 try {
                     // Build array of all instruments in format exchange:tradingsymbol
                     $instruments = array_map(function($position) {
                         return $position['exchange'] . ':' . $position['tradingsymbol'];
                     }, $netPositions);
-                    
+
                     // Get LTP for all instruments at once
                     $ltpData = $kite->getLTP($instruments);
-                    
+
+                    $this->info("Successfully fetched LTPs for all positions:");
                     // Extract LTPs into a simple array
                     foreach ($ltpData as $instrument => $data) {
                         $symbol = explode(':', $instrument)[1];
-                        $ltpPrices[$symbol] = $data['last_price'];
-                    }
-                    
-                    $this->info("Successfully fetched LTPs for all positions:");
-                    foreach ($ltpPrices as $symbol => $price) {
+                        $price = $data['last_price'];
+                        $ltpPrices[$symbol] = $price;
                         $this->info("- {$symbol}: ₹{$price}");
                     }
                 } catch (\Exception $e) {
