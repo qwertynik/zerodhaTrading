@@ -18,6 +18,11 @@ class Kernel extends ConsoleKernel
     /**
      * Register the commands for the application.
      */
+    protected $commands = [
+        Commands\ListZerodhaOrders::class,
+        Commands\CloseStopLossOrders::class,
+    ];
+
     protected function commands(): void
     {
         $this->load(__DIR__.'/Commands');

@@ -4,25 +4,27 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use KiteConnect\KiteConnect;
+use Symfony\Component\Console\Question\ConfirmationQuestion;
 
-class ListZerodhaOrders extends Command
+class CloseStopLossOrders extends Command
 {
     /**
      * The name and signature of the console command.
      *
      * @var string
      */
-    protected $signature = 'zerodha:list-orders
+    protected $signature = 'zerodha:close-stop-loss-orders
                                 {--api-key= : Your Zerodha API key}
                                 {--api-secret= : Your Zerodha API secret}
-                                {--access-token= : Your Zerodha access token (optional)}';
+                                {--access-token= : Your Zerodha access token (optional)}
+                                {--no-confirm : Skip confirmation before closing orders}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'List open orders from Zerodha trading account';
+    protected $description = 'Close pending stop loss orders from Zerodha trading account';
 
     /**
      * Execute the console command.
@@ -32,6 +34,7 @@ class ListZerodhaOrders extends Command
         $apiKey = $this->option('api-key') ?? env('ZERODHA_API_KEY');
         $apiSecret = $this->option('api-secret') ?? env('ZERODHA_API_SECRET');
         $accessToken = $this->option('access-token') ?? env('ZERODHA_ACCESS_TOKEN');
+        $skipConfirm = $this->option('no-confirm');
 
         if (!$apiKey || !$apiSecret) {
             $this->error('API key and API secret are required');
@@ -59,17 +62,27 @@ class ListZerodhaOrders extends Command
                 $this->line("Authenticating with Kite Connect...");
                 $response = $kite->generateSession($requestToken, $apiSecret);
                 $accessToken = $response->access_token;
-                $this->info("Successfully obtained access token! It is: $accessToken");
+                $this->info("Successfully obtained access token!");
             }
 
             $kite->setAccessToken($accessToken);
 
-            // Get open orders
+            // Get all open orders and convert to array
             $orders = $kite->getOrders();
-            // Convert stdClass to array
             $ordersArray = json_decode(json_encode($orders), true);
 
-            // Display open orders in a table
+            // Filter for stop loss orders
+            $stopLossOrders = array_filter($ordersArray, function ($order) {
+                // Stop loss orders are usually identified by order_type = 'SL' or 'SL-M'
+                return in_array($order['order_type'], ['SL', 'SL-M']);
+            });
+
+            if (empty($stopLossOrders)) {
+                $this->info('No pending stop loss orders found');
+                return 0;
+            }
+
+            // Display the stop loss orders
             $this->table([
                 'Order ID',
                 'Symbol',
@@ -90,11 +103,36 @@ class ListZerodhaOrders extends Command
                     $order['product'],
                     $order['exchange']
                 ];
-            }, array_values($ordersArray)));
+            }, array_values($stopLossOrders)));
+
+            // Ask for confirmation unless --no-confirm flag is set
+            if (!$skipConfirm) {
+                $helper = $this->getHelper('question');
+                $question = new ConfirmationQuestion('Do you want to close these stop loss orders? (y/n) ', false);
+
+                if (!$helper->ask($this->input, $this->output, $question)) {
+                    $this->info('Operation cancelled');
+                    return 0;
+                }
+            }
+
+            // Close each stop loss order
+            foreach ($stopLossOrders as $order) {
+                try {
+                    // Get variety from order details
+                    $variety = $order['variety'] ?? 'regular';
+                    $kite->cancelOrder($variety, $order['order_id']);
+                    $this->info("Closed order: {$order['order_id']} ({$order['tradingsymbol']})");
+                } catch (\Exception $e) {
+                    $this->error("Failed to close order {$order['order_id']}: " . $e->getMessage());
+                }
+            }
 
         } catch (\Exception $e) {
             $this->error('Error: ' . $e->getMessage());
             return 1;
         }
+
+        return 0;
     }
 }
