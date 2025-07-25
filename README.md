@@ -6,4 +6,4 @@ Tools to make Zerodha trading easier.
 
 - List Zerodha orders
 
-Command: `php artisan zerodha:orders`
+Command: `php artisan zerodha:list-orders`
