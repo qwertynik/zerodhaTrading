@@ -17,7 +17,8 @@ class CloseAllPositions extends Command
                                 {--api-key= : Your Zerodha API key}
                                 {--api-secret= : Your Zerodha API secret}
                                 {--access-token= : Your Zerodha access token (optional)}
-                                {--no-confirm : Skip confirmation before closing positions}';
+                                {--no-confirm : Skip confirmation before closing positions}
+                                {--use-limit-order : Use limit orders instead of market orders}';
 
     /**
      * The console command description.
@@ -113,19 +114,56 @@ class CloseAllPositions extends Command
                 }
             }
 
+            // If using limit orders, get all LTPs at once
+            $useLimitOrder = $this->option('use-limit-order');
+            $ltpPrices = [];
+            
+            if ($useLimitOrder) {
+                try {
+                    // Build array of all instruments in format exchange:tradingsymbol
+                    $instruments = array_map(function($position) {
+                        return $position['exchange'] . ':' . $position['tradingsymbol'];
+                    }, $netPositions);
+                    
+                    // Get LTP for all instruments at once
+                    $ltpData = $kite->getLTP($instruments);
+                    
+                    // Extract LTPs into a simple array
+                    foreach ($ltpData as $instrument => $data) {
+                        $symbol = explode(':', $instrument)[1];
+                        $ltpPrices[$symbol] = $data['last_price'];
+                    }
+                    
+                    $this->info("Successfully fetched LTPs for all positions:");
+                    foreach ($ltpPrices as $symbol => $price) {
+                        $this->info("- {$symbol}: ₹{$price}");
+                    }
+                } catch (\Exception $e) {
+                    $this->error("Failed to get LTPs: " . $e->getMessage());
+                    return 1;
+                }
+            }
+
             // Close each position
             foreach ($netPositions as $position) {
                 try {
                     // Calculate exit quantity (negative for long positions, positive for short)
                     $exitQuantity = $position['quantity'] < 0 ? -$position['quantity'] : $position['quantity'];
-                    
+
                     // Place opposite order to exit position
                     $order = $kite->placeOrder(
                         KiteConnect::VARIETY_REGULAR,
-                        $position['tradingsymbol'],
-                        $exitQuantity,
-                        $position['exchange'],
-                        $position['product']
+                        [
+                            'tradingsymbol' => $position['tradingsymbol'],
+                            'exchange' => $position['exchange'],
+                            'transaction_type' => ($position['quantity'] < 0 ? KiteConnect::TRANSACTION_TYPE_BUY : KiteConnect::TRANSACTION_TYPE_SELL),
+                            'order_type' => $useLimitOrder ? KiteConnect::ORDER_TYPE_LIMIT : KiteConnect::ORDER_TYPE_MARKET,
+                            'quantity' => $exitQuantity,
+                            'product' => $position['product'],
+                            'price' => $useLimitOrder ? $ltpPrices[$position['tradingsymbol']] : null,
+                            'trigger_price' => null,
+                            'validity' => KiteConnect::VALIDITY_DAY
+                        ]
                     );
 
                     $this->info("Closed position: {$position['tradingsymbol']} (Quantity: {$position['quantity']}, Order ID: {$order->order_id})");
