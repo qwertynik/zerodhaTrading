@@ -66,8 +66,6 @@ class ListZerodhaOrders extends Command
 
             // Get open orders
             $orders = $kite->getOrders();
-            // Convert stdClass to array
-            $ordersArray = json_decode(json_encode($orders), true);
 
             // Display open orders in a table
             $this->table([
@@ -81,16 +79,16 @@ class ListZerodhaOrders extends Command
                 'Exchange'
             ], array_map(function ($order) {
                 return [
-                    $order['order_id'],
-                    $order['tradingsymbol'],
-                    $order['quantity'],
-                    $order['price'],
-                    $order['status'],
-                    $order['order_type'],
-                    $order['product'],
-                    $order['exchange']
+                    $order->order_id,
+                    $order->tradingsymbol,
+                    $order->quantity,
+                    $order->price,
+                    $order->status,
+                    $order->order_type,
+                    $order->product,
+                    $order->exchange
                 ];
-            }, array_values($ordersArray)));
+            }, array_values($orders)));
 
         } catch (\Exception $e) {
             $this->error('Error: ' . $e->getMessage());

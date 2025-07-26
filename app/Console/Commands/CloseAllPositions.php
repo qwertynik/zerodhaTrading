@@ -70,11 +70,8 @@ class CloseAllPositions extends Command
 
             // Get all positions
             $positions = $kite->getPositions();
-            $positionsArray = json_decode(json_encode($positions), true);
-
-            // Filter for net positions (positions with non-zero quantity)
-            $netPositions = array_filter($positionsArray['net'], function ($position) {
-                return $position['quantity'] != 0;
+            $netPositions = array_filter($positions->net, function ($position) {
+                return $position->quantity != 0;
             });
 
             if (empty($netPositions)) {
@@ -93,13 +90,13 @@ class CloseAllPositions extends Command
                 'Exchange'
             ], array_map(function ($position) {
                 return [
-                    $position['tradingsymbol'],
-                    $position['quantity'],
-                    $position['average_price'],
-                    $position['last_price'],
-                    $position['pnl'],
-                    $position['product'],
-                    $position['exchange']
+                    $position->tradingsymbol,
+                    $position->quantity,
+                    $position->average_price,
+                    $position->last_price,
+                    $position->pnl,
+                    $position->product,
+                    $position->exchange
                 ];
             }, array_values($netPositions)));
 
@@ -132,7 +129,7 @@ class CloseAllPositions extends Command
                     // Extract LTPs into a simple array
                     foreach ($ltpData as $instrument => $data) {
                         $symbol = explode(':', $instrument)[1];
-                        $price = $data['last_price'];
+                        $price = $data->last_price;
                         $ltpPrices[$symbol] = $price;
                         $this->info("- {$symbol}: ₹{$price}");
                     }
@@ -146,19 +143,19 @@ class CloseAllPositions extends Command
             foreach ($netPositions as $position) {
                 try {
                     // Calculate exit quantity (negative for long positions, positive for short)
-                    $exitQuantity = $position['quantity'] < 0 ? -$position['quantity'] : $position['quantity'];
+                    $exitQuantity = $position->quantity < 0 ? -$position->quantity : $position->quantity;
 
                     // Place opposite order to exit position
                     $order = $kite->placeOrder(
                         KiteConnect::VARIETY_REGULAR,
                         [
-                            'tradingsymbol' => $position['tradingsymbol'],
-                            'exchange' => $position['exchange'],
-                            'transaction_type' => ($position['quantity'] < 0 ? KiteConnect::TRANSACTION_TYPE_BUY : KiteConnect::TRANSACTION_TYPE_SELL),
+                            'tradingsymbol' => $position->tradingsymbol,
+                            'exchange' => $position->exchange,
+                            'transaction_type' => ($position->quantity < 0 ? KiteConnect::TRANSACTION_TYPE_BUY : KiteConnect::TRANSACTION_TYPE_SELL),
                             'order_type' => $useLimitOrder ? KiteConnect::ORDER_TYPE_LIMIT : KiteConnect::ORDER_TYPE_MARKET,
                             'quantity' => $exitQuantity,
-                            'product' => $position['product'],
-                            'price' => $useLimitOrder ? $ltpPrices[$position['tradingsymbol']] : null,
+                            'product' => $position->product,
+                            'price' => $useLimitOrder ? $ltpPrices[$position->tradingsymbol] : null,
                             'trigger_price' => null,
                             'validity' => KiteConnect::VALIDITY_DAY
                         ]
