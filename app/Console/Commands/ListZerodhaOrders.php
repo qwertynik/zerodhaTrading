@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use KiteConnect\Exception\TokenException;
 use KiteConnect\KiteConnect;
 
 class ListZerodhaOrders extends Command
@@ -15,7 +16,8 @@ class ListZerodhaOrders extends Command
     protected $signature = 'zerodha:list-orders
                                 {--api-key= : Your Zerodha API key}
                                 {--api-secret= : Your Zerodha API secret}
-                                {--access-token= : Your Zerodha access token (optional)}';
+                                {--access-token= : Your Zerodha access token (optional)}
+                                {--refresh-token= : Your Zerodha refresh token (optional)}';
 
     /**
      * The console command description.
@@ -91,7 +93,24 @@ class ListZerodhaOrders extends Command
             }, array_values($orders)));
 
         } catch (\Exception $e) {
-            $this->error('Error: ' . $e->getMessage());
+            // Attempt token renewal if TokenException
+            if (get_class($e) === TokenException::class || strpos($e->getMessage(), 'TokenException') !== false) {
+                $this->warn('Access token expired. Attempting to renew...');
+
+                try {
+                    $newTokenArr = $kite->renewAccessToken($accessToken, $apiSecret);
+                    $newAccessToken = $newTokenArr['access_token'] ?? null;
+                    if ($newAccessToken) {
+                        $this->info('New access token: ' . $newAccessToken);
+                    } else {
+                        $this->error('Token renewal failed: No access_token in response.');
+                    }
+                } catch (\Exception $renewEx) {
+                    $this->error('Token renewal failed: ' . $renewEx->getMessage());
+                }
+            } else {
+                $this->error('Error: ' . $e->getMessage());
+            }
             return 1;
         }
     }
